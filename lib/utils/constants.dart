@@ -16,7 +16,6 @@ class AppConstants {
     'ko': 'Korean',
     'ar': 'Arabic',
     'hi': 'Hindi',
-
   };
 
   static const List<String> recentlyUsedLanguages = ['en', 'es', 'fr', 'de','bn'];

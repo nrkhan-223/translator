@@ -2,8 +2,11 @@ import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 
 class TranslationService {
   OnDeviceTranslator? _translator;
+  String? _currentSourceLang;
+  String? _currentTargetLang;
 
   static final Map<String, TranslateLanguage> _languages = {
+    'bn': TranslateLanguage.bengali,
     'en': TranslateLanguage.english,
     'es': TranslateLanguage.spanish,
     'fr': TranslateLanguage.french,
@@ -16,13 +19,32 @@ class TranslationService {
     'ko': TranslateLanguage.korean,
     'ar': TranslateLanguage.arabic,
     'hi': TranslateLanguage.hindi,
-    'bn': TranslateLanguage.bengali,
   };
 
-  // ✅ Added missing initialize() method
-  Future<void> initialize() async {
-    // No-op for ML Kit — models are downloaded on demand.
-    // Add any one-time setup here if needed in the future.
+  Future<void> initialize() async {}
+
+  // ✅ Reuse translator if same language pair, create new only if changed
+  OnDeviceTranslator _getTranslator(String sourceLang, String targetLang) {
+    if (_translator != null &&
+        _currentSourceLang == sourceLang &&
+        _currentTargetLang == targetLang) {
+      return _translator!;
+    }
+
+    // Close old one before creating new
+    _translator?.close();
+
+    final source = _languages[sourceLang]!;
+    final target = _languages[targetLang]!;
+
+    _translator = OnDeviceTranslator(
+      sourceLanguage: source,
+      targetLanguage: target,
+    );
+    _currentSourceLang = sourceLang;
+    _currentTargetLang = targetLang;
+
+    return _translator!;
   }
 
   Future<String> translate(
@@ -31,38 +53,23 @@ class TranslationService {
       String targetLang,
       Function(double) onProgress,
       ) async {
-    try {
-      final source = _languages[sourceLang];
-      final target = _languages[targetLang];
+    final source = _languages[sourceLang];
+    final target = _languages[targetLang];
 
-      if (source == null || target == null) {
-        throw Exception('Unsupported language pair: $sourceLang → $targetLang');
-      }
-
-      _translator = OnDeviceTranslator(
-        sourceLanguage: source,
-        targetLanguage: target,
-      );
-
-      onProgress(0.3);
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      final result = await _translator!.translateText(text);
-      onProgress(0.8);
-      await Future.delayed(const Duration(milliseconds: 50));
-
-      onProgress(1.0);
-      return result;
-    } catch (e) {
-      print('Translation error: $e');
-      rethrow;
-    } finally {
-      _translator?.close();
-      _translator = null;
+    if (source == null || target == null) {
+      throw Exception('Unsupported language pair: $sourceLang → $targetLang');
     }
+
+    onProgress(0.3);
+
+    // ✅ Reuse translator — don't close after each call
+    final translator = _getTranslator(sourceLang, targetLang);
+    final result = await translator.translateText(text);
+
+    onProgress(1.0);
+    return result;
   }
 
-  // ✅ Fixed: added onProgress callback to match controller call
   Future<void> downloadModel(
       String languageCode,
       Function(double) onProgress,
@@ -71,8 +78,8 @@ class TranslationService {
     if (language == null) return;
 
     final modelManager = OnDeviceTranslatorModelManager();
-    // ✅ Use .bcpCode (String) instead of the enum directly
-    final alreadyDownloaded = await modelManager.isModelDownloaded(language.bcpCode);
+    final alreadyDownloaded =
+    await modelManager.isModelDownloaded(language.bcpCode);
 
     if (!alreadyDownloaded) {
       onProgress(0.0);
@@ -86,11 +93,12 @@ class TranslationService {
     if (language == null) return false;
 
     final modelManager = OnDeviceTranslatorModelManager();
-    // ✅ Same fix here
     return await modelManager.isModelDownloaded(language.bcpCode);
   }
 
+  // ✅ Call this only when truly done (controller onClose)
   void dispose() {
     _translator?.close();
+    _translator = null;
   }
 }

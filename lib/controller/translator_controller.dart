@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -23,6 +25,8 @@ class TranslatorController extends GetxController {
   // Translation state
   var isTranslating = false.obs;
   var translationProgress = 0.0.obs;
+  bool _isDisposed = false;
+  Timer? _debounceTimer;
 
   // Voice input
   final SpeechToText _speechToText = SpeechToText();
@@ -64,24 +68,72 @@ class TranslatorController extends GetxController {
   }
 
   Future<void> _preDownloadModels() async {
-    final commonLanguages = ['en', 'es', 'fr', 'de'];
+    final commonLanguages = ['en', 'es', 'fr', 'de', 'bn'];
 
     for (var lang in commonLanguages) {
       try {
         final isDownloaded = await _translationService.isModelDownloaded(lang);
         if (!isDownloaded) {
           print('Downloading model for $lang...');
-          // ✅ Fixed: onProgress now logs properly; no crash on progress callback
+
+          // ✅ Show loading dialog before download starts
+          _showDownloadDialog(lang);
+
+          // Download the model
           await _translationService.downloadModel(lang, (progress) {
             print('Download progress for $lang: ${(progress * 100).toInt()}%');
+            // Update dialog progress if needed
+            _updateDownloadProgress(progress);
           });
+
+          // ✅ Close dialog after download completes
+          _closeDownloadDialog();
         }
       } catch (e) {
         print('Failed to download model for $lang: $e');
+        _closeDownloadDialog(); // Close dialog on error too
       }
     }
   }
 
+  // Simple loading dialog
+  void _showDownloadDialog(String languageCode) {
+    Get.dialog(
+      Dialog(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Downloading $languageCode model...',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Please wait',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: false, // Prevent closing by tapping outside
+    );
+  }
+
+  void _updateDownloadProgress(double progress) {
+    // Optional: Update dialog to show progress percentage
+    // You can use a GetX dialog with obs variables for real-time updates
+  }
+
+  void _closeDownloadDialog() {
+    if (Get.isDialogOpen ?? false) {
+      Get.back(); // Close the dialog
+    }
+  }
 
   Future<void> _requestPermissions() async {
     await [
@@ -117,44 +169,48 @@ class TranslatorController extends GetxController {
       return;
     }
 
-    isTranslating.value = true;
-    translationProgress.value = 0.0;
+    // ✅ Debounce — wait 500ms after user stops typing/speaking
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (_isDisposed) return; // ✅ guard
 
-    try {
-      final result = await _translationService.translate(
-        sourceTextController.text,
-        sourceLanguage.value,
-        targetLanguage.value,
-            (progress) => translationProgress.value = progress,
-      );
-
-      translatedTextController.text = result;
-
-      // Save to history
-      final history = TranslationHistory(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        sourceText: sourceTextController.text,
-        translatedText: result,
-        sourceLanguage: sourceLanguage.value,
-        targetLanguage: targetLanguage.value,
-        timestamp: DateTime.now(),
-      );
-      await _databaseService.saveTranslation(history);
-
-    } catch (e) {
-      Get.snackbar(
-        'Translation Error',
-        'Failed to translate: ${e.toString()}',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 3),
-      );
-      print('Translation error details: $e');
-    } finally {
-      isTranslating.value = false;
+      isTranslating.value = true;
       translationProgress.value = 0.0;
-    }
+
+      try {
+        final result = await _translationService.translate(
+          sourceTextController.text,
+          sourceLanguage.value,
+          targetLanguage.value,
+              (progress) {
+            if (!_isDisposed) translationProgress.value = progress;
+          },
+        );
+
+        if (_isDisposed) return; // ✅ guard after await
+
+        translatedTextController.text = result;
+
+        final history = TranslationHistory(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          sourceText: sourceTextController.text,
+          translatedText: result,
+          sourceLanguage: sourceLanguage.value,
+          targetLanguage: targetLanguage.value,
+          timestamp: DateTime.now(),
+        );
+        await _databaseService.saveTranslation(history);
+
+      } catch (e) {
+        if (_isDisposed) return; // ✅ guard
+        print('Translation error details: $e');
+      } finally {
+        if (!_isDisposed) {
+          isTranslating.value = false;
+          translationProgress.value = 0.0;
+        }
+      }
+    });
   }
 
   Future<void> startListening() async {
@@ -195,6 +251,7 @@ class TranslatorController extends GetxController {
   String _getLocaleForLanguage(String languageCode) {
     // Map language codes to locale IDs
     final locales = {
+      'bn': 'বাংলা',
       'en': 'en_US',
       'es': 'es_ES',
       'fr': 'fr_FR',

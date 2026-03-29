@@ -6,7 +6,7 @@ class LanguageSelector extends StatelessWidget {
   final RxString targetLanguage;
   final VoidCallback onSwap;
 
-   LanguageSelector({
+  LanguageSelector({
     super.key,
     required this.sourceLanguage,
     required this.targetLanguage,
@@ -15,33 +15,35 @@ class LanguageSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(32),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _LanguageButton(
-              languageCode: sourceLanguage.value,
-              onTap: () => _showLanguagePicker(true),
+    return Obx(() {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(32),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _LanguageButton(
+                languageCode: sourceLanguage.value,
+                onTap: () => _showLanguagePicker(true),
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz),
-            onPressed: onSwap,
-          ),
-          Expanded(
-            child: _LanguageButton(
-              languageCode: targetLanguage.value,
-              onTap: () => _showLanguagePicker(false),
+            IconButton(
+              icon: const Icon(Icons.swap_horiz),
+              onPressed: onSwap,
             ),
-          ),
-        ],
-      ),
-    );
+            Expanded(
+              child: _LanguageButton(
+                languageCode: targetLanguage.value,
+                onTap: () => _showLanguagePicker(false),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   void _showLanguagePicker(bool isSource) {
@@ -97,6 +99,7 @@ class LanguageSelector extends StatelessWidget {
 
   final List<Map<String, String>> _languages = [
     {'code': 'en', 'name': 'English'},
+    {'code': 'bn', 'name': 'বাংলা'},
     {'code': 'es', 'name': 'Spanish'},
     {'code': 'fr', 'name': 'French'},
     {'code': 'de', 'name': 'German'},
@@ -152,6 +155,7 @@ class _LanguageButton extends StatelessWidget {
   String _getLanguageName(String code) {
     final languages = {
       'en': 'English',
+      'bn': 'বাংলা',
       'es': 'Spanish',
       'fr': 'French',
       'de': 'German',
